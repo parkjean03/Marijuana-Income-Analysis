@@ -1,0 +1,150 @@
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+library(survey)
+```
+
+```{r}
+df <- read.csv("tutorialdf.csv")
+```
+
+
+```{r}
+head(df)
+```
+
+```{r}
+# for getting target population
+pop <- subset(df, subset = ((DUQ200 == 1 | DUQ200 == 2) & INQ020 == 1))
+
+# for filtering out nulls
+pop <- subset(pop, subset = IND235 <= 12)
+```
+
+```{r}
+pop
+```
+Is there a significant difference in monthly family income between people who use and don't use marijuana?
+
+```{r}
+ggplot(pop, aes(x = IND235, fill = factor(DUQ200))) + 
+  geom_bar(position =  'fill') +
+  labs(title = "Distribution of Income", x = "Monthly Family Income", y = "Frequency", fill = "Ever Used Marijuana") +
+  scale_fill_discrete(labels = c("Yes", "No"))
+```
+
+```{r, fig.width = 5, fig.height = 3}
+ggplot(pop, aes(x = factor(DUQ200), y = IND235, fill = factor(DUQ200))) + 
+  geom_boxplot(show.legend = FALSE) +
+  labs(title = "Distribution of Income", x = "Ever Smoked Marijuana?", y = "Monthly Family Income", fill = "Ever Used Marijuana") +
+  scale_fill_brewer(palette="Dark2") + 
+  scale_x_discrete(labels = c("1" = "Yes", "2" = "No"))
+```
+
+
+```{r}
+t.test(pop[pop$DUQ200 == 1,]$IND235, pop[pop$DUQ200 == 2,]$IND235)
+```
+
+Categorize people into low, medium, high usage of marijuana users
+```{r}
+mari = pop[pop$DUQ200 == 1,]
+
+# only include those who responded to DUQ217: "During the time that you smoked marijuana or hashish, how often would you usually use it?"
+mari_sub = subset(mari, subset = DUQ217 < 7)
+usage <- ifelse(mari_sub$DUQ217 <= 3, "low", 
+              ifelse(mari_sub$DUQ217 == 4, "medium", "high"))
+mari_sub$usage = usage
+mari_sub$usage <- ordered(mari_sub$usage, levels = c("low", "medium", "high"))
+```
+
+```{r}
+mari_sub
+```
+
+```{r}
+ggplot(mari_sub, aes(x = factor(usage), y = IND235, fill = factor(usage))) + 
+  geom_boxplot() +
+  labs(title = "Distribution of Income", x = "Marijuana Usage", y = "Monthly Family Income", fill = "Marijuana Usage") + 
+  scale_fill_brewer(palette="Dark2")
+```
+
+For description of data.
+```{r}
+(table(mari_sub$usage))
+(table(pop$DUQ200))
+```
+
+```{r}
+hist(mari_sub$IND235)
+```
+
+
+Do quitters tend to have higher incomes? Expecting yes. (Not included in report)
+```{r}
+mari_sub$days_since_smoking <- ifelse(mari_sub$DUQ215U == 1, pop$DUQ215Q, 
+              ifelse(mari_sub$DUQ215U == 2, pop$DUQ215Q * 7,
+              ifelse(mari_sub$DUQ215U == 3, pop$DUQ215Q * 30, 
+                     pop$DUQ215Q * 365)))
+hist(log(mari_sub$days_since_smoking))
+```
+
+```{r}
+lm = lm(IND235 ~ log(days_since_smoking + 1), data = mari_sub)
+summary(lm)
+```
+^ Not significant. Doesn't work with a linear model (no transformations on x) either. 
+
+Working with survey design:
+For first graph (smokers vs income)
+```{r}
+des <- svydesign(ids =  ~SEQN,
+                 strata = ~DUQ200,
+                 data = pop)
+```
+
+```{r}
+svymean(~IND235, subset(des, subset = DUQ200 == 1))
+svymean(~IND235, subset(des, subset = DUQ200 == 2))
+confint(svymean(~IND235, subset(des, subset = DUQ200 == 1)))
+confint(svymean(~IND235, subset(des, subset = DUQ200 == 2)))
+```
+
+
+For second graph (frequency vs income)
+```{r}
+des <- svydesign(ids =  ~SEQN,
+                 strata = ~usage,
+                 data = mari_sub)
+```
+
+```{r}
+model.frame(des)
+```
+
+
+```{r}
+svymean(~IND235, subset(des, subset = usage == 'low'))
+svymean(~IND235, subset(des, subset = usage == 'medium'))
+svymean(~IND235, subset(des, subset = usage == 'high'))
+confint(svymean(~IND235, subset(des, subset = usage == 'low')))
+confint(svymean(~IND235, subset(des, subset = usage == 'medium')))
+confint(svymean(~IND235, subset(des, subset = usage == 'high')))
+```
+
+Getting table of variables used in analysis:
+
+```{r}
+table(df$DUQ200, useNA = 'always')
+table(df$DUQ217, useNA = 'always')
+table(df$INQ020, useNA = 'always')
+table(df$IND235, useNA = 'always')
+
+prop.table(table(df$DUQ200, useNA = 'always'))
+prop.table(table(df$DUQ217, useNA = 'always'))
+prop.table(table(df$INQ020, useNA = 'always'))
+prop.table(table(df$IND235, useNA = 'always'))
+```
+
